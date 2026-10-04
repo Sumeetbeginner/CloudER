@@ -1,0 +1,11 @@
+{
+  "name": "clouder-browser-checks",
+  "private": true,
+  "scripts": {
+    "test:e2e": "node tests/console.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "prettier": "3.9.9"
+  }
+}

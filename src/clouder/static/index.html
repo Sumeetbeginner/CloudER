@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CloudER · Cloud Console</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%235652e8'/%3E%3Cpath d='M28 14a10 10 0 1 0 0 12' stroke='white' stroke-width='4' fill='none'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <section id="login" class="login-shell">
+      <div class="login-story">
+        <div class="brand">
+          <span class="logo">C</span> CloudER<span class="brand-label"
+            >CONSOLE</span
+          >
+        </div>
+        <div>
+          <span class="eyebrow">YOUR INFRASTRUCTURE. YOUR RULES.</span>
+          <h1>A little cloud.<br />A lot of possibility.</h1>
+          <p>
+            Provision workloads, manage your data, and understand every
+            operation. One workspace for your self-hosted infrastructure.
+          </p>
+          <div class="architecture-card">
+            <span>CONTROL PLANE</span>
+            <div class="arch-line"></div>
+            <div class="arch-services">
+              <span>Compute</span><span>Storage</span><span>Databases</span>
+            </div>
+            <small
+              >Durable operations · Tenant isolation · Auditable changes</small
+            >
+          </div>
+        </div>
+        <small>CloudER / Engineering preview 0.1</small>
+      </div>
+      <div class="login-form-wrap">
+        <form id="login-form">
+          <span class="eyebrow">WELCOME TO YOUR CLOUD</span>
+          <h2>Connect to your workspace</h2>
+          <p>Use an API key created by your CloudER operator.</p>
+          <label for="api-key">Workspace API key</label
+          ><input
+            id="api-key"
+            name="key"
+            type="password"
+            autocomplete="off"
+            placeholder="cer_…"
+            required
+            minlength="10"
+          />
+          <p class="helper">
+            Your key stays in memory and is cleared when you leave.
+          </p>
+          <button class="primary wide" type="submit">
+            Open console <span>→</span>
+          </button>
+          <p id="login-error" class="error" role="alert"></p>
+          <div class="login-note">
+            <strong>First time here?</strong>
+            <p>
+              Run the operator’s bootstrap command to create your workspace.
+              Setup instructions are in the repository README.
+            </p>
+          </div>
+        </form>
+      </div>
+    </section>
+    <div id="shell" class="shell" hidden>
+      <aside class="sidebar">
+        <a href="#overview" class="brand"
+          ><span class="logo">C</span> CloudER</a
+        >
+        <div class="workspace-card">
+          <span class="workspace-icon">W</span>
+          <div>
+            <strong id="workspace-name">Workspace</strong
+            ><small id="role-label">Owner workspace</small>
+          </div>
+        </div>
+        <p class="nav-label">WORKSPACE</p>
+        <nav aria-label="Cloud services" id="navigation"></nav>
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span id="provider-label">Control plane</span
+          ><small>Engineering preview · v0.1.0</small>
+        </div>
+      </aside>
+      <div class="main-shell">
+        <header class="topbar">
+          <div>
+            <button
+              id="menu-button"
+              class="icon-button"
+              aria-label="Toggle navigation"
+            >
+              ☰</button
+            ><span class="breadcrumb"
+              >Workspace <span>/</span>
+              <strong id="breadcrumb">Overview</strong></span
+            >
+          </div>
+          <div class="topbar-right">
+            <span class="environment">SELF-HOSTED</span
+            ><button id="logout" class="quiet">Sign out</button
+            ><span class="avatar">W</span>
+          </div>
+        </header>
+        <main id="main">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="page-kicker">YOUR CLOUD, AT A GLANCE</p>
+              <h1 id="page-title">Overview</h1>
+              <p id="page-description">
+                A clear view of your resources and recent activity.
+              </p>
+            </div>
+            <div class="heading-actions">
+              <button id="refresh" class="secondary">↻ Refresh</button
+              ><button id="create" class="primary">+ Create resource</button>
+            </div>
+          </div>
+          <div id="mode-banner" class="mode-banner"></div>
+          <div id="notice" role="status" hidden></div>
+          <div id="content" aria-live="polite"></div>
+          <footer class="main-footer">
+            <span>CloudER Control Plane</span
+            ><span id="updated">Waiting for data</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+    <dialog id="modal">
+      <form id="modal-form">
+        <div class="modal-header">
+          <h2 id="modal-title">Create resource</h2>
+          <button
+            type="button"
+            id="close-modal"
+            class="icon-button"
+            aria-label="Close dialog"
+          >
+            ×
+          </button>
+        </div>
+        <div id="modal-body"></div>
+        <p id="modal-error" class="error" role="alert"></p>
+        <div class="modal-footer">
+          <button type="button" id="cancel-modal" class="secondary">
+            Cancel</button
+          ><button type="submit" id="modal-submit" class="primary">
+            Create resource
+          </button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

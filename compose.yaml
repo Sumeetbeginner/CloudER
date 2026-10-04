@@ -1,0 +1,72 @@
+name: clouder
+
+x-control: &control
+  build: .
+  env_file: .env
+  environment:
+    CLOUDER_DATABASE_URL: postgresql+psycopg://clouder:${POSTGRES_PASSWORD:?Run scripts/configure.py}@postgres:5432/clouder
+    CLOUDER_DATA_DIR: /app/.data
+  volumes:
+    - objects:/app/.data
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,noexec,nosuid
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  networks: [control]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: clouder
+      POSTGRES_DB: clouder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/configure.py}
+    volumes: [metadata:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U clouder -d clouder]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [control]
+
+  migrate:
+    <<: *control
+    command: [migrate]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *control
+    command: [serve, --host, 0.0.0.0]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    <<: *control
+    command: [worker]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  metadata:
+  objects:
+networks:
+  control:
+    internal: true

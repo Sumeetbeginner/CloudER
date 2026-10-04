@@ -1,0 +1,10 @@
+# Opt-in only: the worker's socket access grants control of its Docker daemon.
+# Keep the default Compose deployment in simulation mode until you have a
+# dedicated development host/VM. API containers never receive this socket.
+services:
+  worker:
+    user: "0:0"
+    environment:
+      CLOUDER_DOCKER_SOCKET: /var/run/docker.sock
+    volumes:
+      - ${CLOUDER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
