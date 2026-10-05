@@ -4,6 +4,7 @@ Requires a generated .env and a dedicated CI/development Docker daemon.
 Only the unique project created here is removed, including its test volumes.
 """
 
+import json
 import subprocess
 import time
 import uuid
@@ -50,7 +51,9 @@ def main() -> None:
             client.put(path, content=b"packaged stack proof").raise_for_status()
             assert client.get(path).content == b"packaged stack proof"
             client.delete(path).raise_for_status()
-        print("PASS: Compose ingress, migration, PostgreSQL, worker, and object round trip")
+            health = json.loads(compose("exec", "-T", "api", "clouder", "worker-health"))
+            assert health["status"] == "healthy" and health["live_workers"] >= 1
+        print("PASS: Compose ingress, migration, PostgreSQL, worker health, and object round trip")
     finally:
         compose("down", "--volumes", "--remove-orphans", timeout=120)
 

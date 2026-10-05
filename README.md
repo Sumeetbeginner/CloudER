@@ -45,6 +45,8 @@ source .venv/bin/activate
 clouder worker
 ```
 
+From another terminal, `clouder worker-health` reports worker-pool liveness as JSON (exit 0 when a worker is live, 1 otherwise). It does not measure workload uptime.
+
 Open **http://127.0.0.1:8000** and paste the owner API key printed by bootstrap. Create a compute resource, watch its operation complete, then create a bucket and upload a file. The console reads real API responses; it contains no seeded dashboard numbers.
 
 On Windows, activate with `.venv\Scripts\Activate.ps1`. Run Docker workloads through Docker Desktop's Linux engine/WSL2. Do not commit `.env`, API keys, database files, or object data.
@@ -119,7 +121,7 @@ TEST_DATABASE_URL='postgresql+psycopg://USER:PASSWORD@localhost/TEST_DB' pytest 
 CLOUDER_TEST_DOCKER=1 pytest tests/test_docker_integration.py -v
 ```
 
-The tests exercise tenant boundaries, permissions, quota races, transaction rollback, duplicate requests, stale worker fencing, retries, object integrity, secret redaction, and API-key revocation. Real-Docker integration verifies HTTP through HAProxy to nginx and PostgreSQL data persistence across a restart. GitHub Actions runs quality, PostgreSQL, Docker integration, and image-build gates. Passing local simulation tests does not substitute for those external gates.
+The tests exercise tenant boundaries, permissions, quota races, transaction rollback, duplicate requests, renewable leases, stale/expired worker fencing, process-kill recovery, schema upgrade/rollback, retries, object integrity, secret redaction, and API-key revocation. Real-Docker integration verifies HTTP through HAProxy to nginx and PostgreSQL data persistence across a restart. GitHub Actions runs quality, PostgreSQL, Docker integration, and image-build gates. Passing local simulation tests does not substitute for those external gates.
 
 See [validation evidence](docs/validation.md) for what was actually run and what remains unverified.
 

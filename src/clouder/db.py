@@ -5,7 +5,9 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from clouder.config import Settings
-from clouder.models import Base
+from clouder.models import Base, WorkerHeartbeat
+
+SCHEMA_VERSION = 2
 
 
 class Database:
@@ -29,20 +31,40 @@ class Database:
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def migrate(self) -> None:
-        """Initial versioned migration. Never run implicitly during API startup."""
+        """Explicit forward migrations, serialized and atomic on both backends."""
         with self.engine.begin() as connection:
             # Serialize migration runners in PostgreSQL; SQLite is local-development only.
             if self.engine.dialect.name == "postgresql":
                 connection.execute(text("SELECT pg_advisory_xact_lock(73419201)"))
+            else:
+                # sqlite3 legacy transaction mode does not BEGIN for DDL itself.
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
             connection.execute(
                 text("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
             )
             version = connection.execute(text("SELECT MAX(version) FROM schema_version")).scalar()
             if version is None:
-                Base.metadata.create_all(connection)
+                Base.metadata.create_all(
+                    connection,
+                    tables=[
+                        t for t in Base.metadata.sorted_tables if t.name != "worker_heartbeats"
+                    ],
+                )
                 connection.execute(text("INSERT INTO schema_version (version) VALUES (1)"))
-            elif version != 1:
+                version = 1
+            if version == 1:
+                Base.metadata.tables[WorkerHeartbeat.__tablename__].create(connection)
+                connection.execute(text("INSERT INTO schema_version (version) VALUES (2)"))
+            elif version != SCHEMA_VERSION:
                 raise RuntimeError("Unsupported schema version; use the matching CloudER release")
+
+    def require_schema(self) -> None:
+        with self.transaction() as session:
+            version = session.execute(text("SELECT MAX(version) FROM schema_version")).scalar()
+            if version != SCHEMA_VERSION:
+                raise RuntimeError(
+                    "Schema mismatch; run clouder migrate with matching processes stopped"
+                )
 
     @contextmanager
     def transaction(self) -> Iterator[Session]:

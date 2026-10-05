@@ -23,6 +23,9 @@
 | `CLOUDER_STORAGE_QUOTA_BYTES` | 100 MiB logical object data per tenant |
 | `CLOUDER_OBJECT_LIMIT_BYTES` | 10 MiB per object; browser upload also caps at 10 MiB |
 | `CLOUDER_OPERATION_LEASE_SECONDS` | 180; minimum 120 |
+| `CLOUDER_WORKER_HEARTBEAT_SECONDS` | 10; range 1–30; health becomes stale after three intervals |
+| `CLOUDER_OPERATION_TIMEOUT_SECONDS` | 600; must be at least lease duration; stops renewal and rejects late results, does not interrupt provider calls |
+| `CLOUDER_WORKER_STOP_GRACE_PERIOD` | Compose only: `11m`; choose longer than the execution deadline when changing it |
 | `CLOUDER_MAX_ATTEMPTS` | 4 |
 | `CLOUDER_API_KEY_DAYS` | 30; maximum 365 |
 
@@ -31,13 +34,21 @@ If using the rootless socket override, Compose must mount the host socket at the
 ## A resource stays pending
 
 1. Read its operation in the console. Note operation ID, attempts, state, and sanitized error.
-2. Check `docker compose logs worker` and `docker compose ps` (or the local worker terminal).
+2. Run `docker compose exec -T api clouder worker-health` (local: `clouder worker-health`). Exit 0 means at least one idle/busy worker with fresh liveness evidence; exit 1 means none or metadata/schema failure. Then check `docker compose logs worker` and `docker compose ps` (or the local worker terminal).
 3. Check metadata connectivity and `GET /health/ready`.
 4. In Docker mode, verify socket permissions, image availability, free disk/memory, and daemon API compatibility.
 5. A crashed worker's running claim is eligible after its lease expires. Start a replacement worker and observe the operation; do not manually rewrite lease ownership.
 6. Retry-budget exhaustion is terminal. Fix the provider issue, delete the failed resource to reconcile partial infrastructure, then recreate with a new name or after deletion succeeds. No generic retry endpoint is provided yet.
 
 Creation retries use stable container names. Worker crashes after a runtime effect can cause repeat execution; this is expected. Do not remove ownership labels from managed containers. Ownership mismatches stop reconciliation instead of deleting unknown infrastructure.
+
+## Worker liveness and graceful shutdown
+
+`worker-health` reports `status`, `provider`, `live_workers`, `busy_workers`, `stale_workers`, and `stopped_workers`. It is operator-only and filters by configured provider mode. A busy heartbeat must match the current running claim and unexpired lease. A fresh heartbeat does not prove useful progress, free capacity, or a healthy Docker daemon. Pair it with queue age and failures; do not use a pool check as a per-container healthcheck. Heartbeat history older than 24 hours is pruned at worker startup.
+
+SIGTERM/SIGINT finishes the current call while renewing its claim, then stops without claiming another job. Compose grants 11 minutes by default before forced termination. Renewal stops after the execution deadline or its first ownership/database failure; the result is then discarded. A crashed or timed-out attempt becomes recoverable after the last lease expires. A blocked provider thread itself is not cancelled: investigate and terminate that worker if it cannot drain. The Docker daemon cannot enforce these lease tokens, so duplicate effects remain possible and adapters must remain idempotent.
+
+Keep host clocks synchronized. Leases and heartbeat timestamps use wall time; execution deadlines use monotonic time. Do not shorten lease values or change provider modes during active operations.
 
 ## API is ready but a workload is down
 
@@ -66,15 +77,26 @@ Logical deletion retains blobs. Monitor the physical volume independently. Stop 
 - Run quality, PostgreSQL, Docker integration, browser, and build gates before releasing.
 - Take backups and record the schema version before changes.
 - Deploy matching API and worker versions; allow active jobs to settle before changing provider configuration.
-- For this initial schema, rollback means restoring the prior application image if schema compatibility is unchanged. Later migrations require their own explicit compatibility/rollback design.
+- For schema changes, follow the version-specific upgrade procedure below; old v1 binaries reject a v2 marker even though the migration is additive.
 - `docker compose down` preserves named volumes. **Do not use `down -v` unless intentionally destroying all control-plane and object data.** Tenant workload containers/volumes are managed separately from Compose.
 - Never equate a successful image build with a successful restore drill or production readiness.
 
+## Schema v1 → v2 upgrade and rollback
+
+1. Block new API writes, drain queued work, and stop API/workers. Confirm no provider calls remain before touching metadata. Keep provider configuration unchanged.
+2. Record the old application version and take the metadata/object/key backups described above. Verify backup readability before proceeding.
+3. Install the matching new API/worker code and run `clouder migrate`. The atomic migration adds only `worker_heartbeats` and version marker 2; it preserves v1 data. Running it twice is safe. Unknown newer schemas are rejected.
+4. Start matching workers and API. Check `/health/ready`, `clouder worker-health`, then create a disposable resource and verify its completed operation. For Compose, stop writers before rebuilding; startup dependencies run the migration before new processes.
+5. If migration fails, both its DDL and version marker roll back. Diagnose and rerun with writers still stopped. If rollback is required after a successful upgrade, stop all writers and restore the pre-upgrade metadata snapshot with the old code. If new writes occurred, reconcile their object/runtime effects before reopening ingress. Do not merely change the version marker.
+
+Tests verify v1 data preservation, repeat migration, unknown-version rejection, and DDL rollback on SQLite and PostgreSQL CI. No mixed-version or zero-downtime upgrade is supported.
+
 ## Proposed alert thresholds (not achieved SLOs)
 
+- No live worker for the configured provider: inspect process/database connectivity. A live-but-busy pool may still be saturated.
 - Oldest unfinished operation age > 300 seconds: investigate worker/runtime backlog.
 - Any terminal operation failure: review error and capacity/runtime state.
 - Metadata readiness failure: remove API from ingress and investigate database health.
 - Physical object volume > 80% full: plan cleanup/capacity before exhaustion.
 
-Use an authenticated viewer key to scrape `/v1/metrics`; rotate before expiry. Configure actual alert routing externally. Future work includes workload metrics, worker heartbeat, distributed tracing, and measured latency/error budgets.
+Use an authenticated viewer key to scrape `/v1/metrics`; rotate before expiry. Configure actual alert routing externally. Future work includes workload metrics, distributed tracing, and measured latency/error budgets.

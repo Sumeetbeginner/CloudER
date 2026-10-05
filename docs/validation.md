@@ -5,9 +5,9 @@ Updated: 2026-10-05. This file records actual checks, not aspirational productio
 | Check | Result | Scope / limitation |
 |---|---|---|
 | Ruff lint and format | Pass | Python source, scripts, and tests |
-| Strict mypy | Pass | 14 Python source modules |
+| Strict mypy | Pass | 15 Python source modules |
 | JavaScript parse | Pass | Console JavaScript |
-| Python behavioral suite | 24 passed, 1 skipped | SQLite; 93.45% measured statement coverage at this checkpoint |
+| Python behavioral suite | 39 passed, 1 skipped | SQLite; 94.05% measured statement coverage after worker-liveness changes |
 | Docker adapter contracts | Pass | Mocked Docker HTTP responses and security configuration assertions; not live Docker |
 | Desktop browser | Pass | Chromium, 1440 px; console → HTTP API → SQL/jobs → worker → rendered readiness |
 | Mobile browser | Pass | Chromium, 390 px; responsive layout, navigation, no page-level horizontal overflow |
@@ -38,3 +38,9 @@ GitHub Actions independently defines quality, PostgreSQL, real Docker, image bui
 GitHub run [37216146949](https://github.com/Sumeetbeginner/CloudER/actions/runs/37216146949) passed quality, PostgreSQL, and browser jobs. Its real-Docker job identified a load-balancer endpoint missing because the container used only an internal network. The correction adds a separate tenant ingress network, preserves internal-only compute/database placement, validates loopback binding before reporting readiness, and applies the same separation to Compose API ingress.
 
 After the correction, GitHub run [37285038195](https://github.com/Sumeetbeginner/CloudER/actions/runs/37285038195) passed all four jobs (**quality, postgres, browser, docker**) on implementation commit `fb89d037cd5511f3badae2ab41ecc58dfdd8068e`. The Docker job passed the real nginx/HAProxy/PostgreSQL integration, application image build, and complete packaged Compose smoke test. This evidence does not establish high availability, hostile-tenant isolation, or managed backup/restore.
+
+## Worker reliability increment
+
+Local `make check` and `make test` pass: 39 tests passed, one live-Docker test skipped, 94.05% statement coverage. New cases cover background renewal beyond the original lease deadline, token/expiry fencing, lost database ownership, deadline overrun, graceful drain, provider-scoped health and CLI exit codes, real subprocess death after a deterministic provider effect, and v1→v2 schema migration with injected DDL failure rollback. The subprocess uses a test provider, not Docker.
+
+The earlier integration run above belongs to the foundation checkpoint. The worker-reliability changes require a new PostgreSQL, browser, and Docker/Compose CI run; results will be recorded after that run completes.

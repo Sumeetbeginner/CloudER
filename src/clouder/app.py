@@ -10,7 +10,6 @@ from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from clouder.config import Settings
@@ -115,10 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health/ready", include_in_schema=False)
     def ready() -> Response:
         try:
-            with db.transaction() as session:
-                version = session.execute(text("SELECT MAX(version) FROM schema_version")).scalar()
-                if version != 1:
-                    raise RuntimeError("Schema mismatch")
+            db.require_schema()
             return JSONResponse({"status": "ready"})
         except Exception:
             return JSONResponse({"status": "unavailable"}, status_code=503)

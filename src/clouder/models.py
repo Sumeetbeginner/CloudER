@@ -78,6 +78,17 @@ class Operation(Base):
     __table_args__ = (Index("ix_operation_claim", "state", "available_at", "lease_until"),)
 
 
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    state: Mapped[str] = mapped_column(String(20))
+    started_at: Mapped[int] = mapped_column(Integer, default=now)
+    seen_at: Mapped[int] = mapped_column(Integer, index=True)
+    operation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
 class Idempotency(Base):
     __tablename__ = "idempotency"
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), primary_key=True)

@@ -13,6 +13,10 @@ Completion means reproducible evidence, not feature names in a README. The follo
 | 7. Billing ledger | Immutable usage events, versioned prices, deduplication, settlement, reconciliation | Replay identical events without double-charge; handle late events; compare ledger totals to independent calculation |
 | 8. Release engineering | Immutable image/action pins, SBOM, dependency scans, signed images, migration matrix, upgrade/rollback | Reproducible release build, verified provenance, staged rollout, successful restore and rollback drill |
 
+## Runtime reliability progress
+
+Implemented: renewable execution leases, expiry-aware completion, operator heartbeats and health command, bounded renewal, graceful drain, explicit v1→v2 migration, and subprocess crash-after-effect recovery tests. Milestone 2 remains incomplete: generation-aware desired state, drift scans, lifecycle updates/cancellation, and runtime-enforced fencing are still planned.
+
 ## Suggested performance experiment
 
 Use a fixed disposable PostgreSQL host, fixed API/worker replicas, and record CPU, RAM, disk, Python/PostgreSQL/Docker versions, catalog digests, and source commit. Test reads separately from resource acceptance and provisioning. Use realistic mixed tenants; include one noisy tenant. Report saturation and failures, not only the fastest run. Compare one worker versus several workers to evaluate queue contention. Tenant write serialization is an explicit hypothesis to measure.

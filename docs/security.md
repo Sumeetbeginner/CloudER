@@ -17,7 +17,7 @@ Protect tenant metadata, stored objects, secret plaintext, database data, runtim
 | Path traversal | Object keys map to metadata; filesystem path uses UUID + digest only | Operator filesystem access remains trusted |
 | Stored script execution | Object downloads forced to attachment/octet-stream; escaped console output; same-origin CSP | Ongoing browser XSS regression coverage |
 | Request flood | Bounded payloads, paginated lists, worker retry budget | Mandatory reverse-proxy rate/connection limits before any remote exposure |
-| Queue replay / worker crash | Stable runtime names, idempotent effects, job leases, fenced completion | Strong runtime fencing, periodic drift scans, worker heartbeats |
+| Queue replay / worker crash | Stable runtime names, idempotent effects, renewable leases, expiry-aware completion fencing, operator heartbeats | Strong runtime fencing, periodic drift scans |
 | Audit tampering | No audit-update/delete API; events committed with mutations | Append-only DB grants, external immutable log sink, retention policy |
 | Supply-chain compromise | Locked Python resolution; dependency update automation; restricted runtime catalog | Digest-pinned images, signed provenance, vulnerability gate and SBOM |
 

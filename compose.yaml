@@ -61,6 +61,7 @@ services:
   worker:
     <<: *control
     command: [worker]
+    stop_grace_period: ${CLOUDER_WORKER_STOP_GRACE_PERIOD:-11m}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped

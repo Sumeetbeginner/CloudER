@@ -1,6 +1,6 @@
 # CloudER architecture
 
-Status: engineering preview, schema v1. Single-host reference implementation; not an enterprise production release.
+Status: engineering preview, schema v2. Single-host reference implementation; not an enterprise production release.
 
 ## System boundaries
 
@@ -27,7 +27,7 @@ The code is a modular monolith with two independently runnable processes. A sing
 | `app.py`, `routes.py`, `storage.py` | HTTP validation, authentication integration, serialization | Runtime socket access |
 | `security.py` | Hashed API keys and role checks | Browser-supplied tenant identity |
 | `services.py` | Tenant-scoped resource lifecycle, quotas, idempotency, audit | Runtime effects inside a database transaction |
-| `models.py`, `db.py` | SQL persistence and initial schema migration | Implicit schema changes on API startup |
+| `models.py`, `db.py` | SQL persistence and versioned schema migrations | Implicit schema changes on API startup |
 | `worker.py` | Durable job claim, retries, lease recovery, completion fencing | Request-scoped work queues |
 | `providers.py` | Idempotent runtime reconciliation | Arbitrary images, host paths, commands, or target addresses supplied by tenants |
 | `static/` | Console rendering and API interaction | Authorization decisions as a security boundary |
@@ -51,8 +51,8 @@ stateDiagram-v2
 3. Resource, operation, idempotency record, and request audit event commit in one transaction. The HTTP dependency closes its transaction **before** returning success.
 4. Idempotency keys are tenant-scoped and bind to a canonical request fingerprint. Same key + different payload returns 409. Keys are currently retained indefinitely; retention is a future explicit migration/policy.
 5. Jobs are at-least-once. PostgreSQL workers use `FOR UPDATE SKIP LOCKED`; conditional claim updates protect the local SQLite path. Work occurs outside the database transaction.
-6. Claims have a unique lease token. Completion updates require the same token, fencing stale database writes. Container names are stable resource UUIDs, so retrying creation reconciles the same container.
-7. Retry delay grows exponentially to 60 seconds, with four attempts by default. Expired running claims can be recovered. Runtime calls time out after 20 seconds; the default lease is 180 seconds.
+6. Claims have a unique lease token. Renewal and completion require the same token and an unexpired lease, fencing stale database writes. Container names are stable resource UUIDs, so retrying creation reconciles the same container.
+7. Retry delay grows exponentially to 60 seconds, with four attempts by default. Expired running claims can be recovered. Runtime calls time out after 20 seconds; the default lease is 180 seconds and renews every 10 seconds during provider execution. Renewal stops at a 600-second execution deadline or on uncertain ownership; late results are discarded. This cannot cancel in-flight Docker effects.
 8. API success means accepted intent. `ready` means the provider observed the container process running after creation. There is no continuous drift reconciliation or application readiness certification yet.
 
 Fencing prevents stale control-plane writes, not arbitrary stale effects in a non-fencing Docker daemon. Current operations on a resource cannot overlap create/delete through the API, and provider effects are idempotent. A future scheduler or mutable resource spec needs generation-aware runtime reconciliation and stronger fencing before adding automatic failover.
@@ -77,11 +77,13 @@ Provider selection is deployment configuration. Do not switch provider mode with
 
 Billing always simulates cost: elapsed seconds between provisioning readiness and deletion, multiplied by a synthetic integer microUSD rate. It includes downtime until deletion and excludes storage, egress, tax, and discounts. No payment integration or durable usage ledger is claimed. A real ledger needs idempotent usage events, immutable price versions, settlement windows, and reconciliation.
 
-Metrics expose tenant resource/job counts and oldest unfinished operation age. Structured HTTP logs include route templates, status, latency, and generated request IDs; they omit request bodies, tokens, query strings, and raw paths. Audit events are transactionally recorded for accepted mutations and secret reads. They are append-only through the API, **not tamper-proof against database administrators**. Denied request auditing, OpenTelemetry propagation, worker heartbeats, host metrics, dashboards, and paging integrations remain planned.
+Metrics expose tenant resource/job counts and oldest unfinished operation age. Structured HTTP logs include route templates, status, latency, and generated request IDs; they omit request bodies, tokens, query strings, and raw paths. Audit events are transactionally recorded for accepted mutations and secret reads. They are append-only through the API, **not tamper-proof against database administrators**. Denied request auditing, OpenTelemetry propagation, host metrics, dashboards, and paging integrations remain planned.
+
+Operator-only `clouder worker-health` reports aggregate live/busy/stale/stopped workers for the configured provider and exits nonzero if none are live. Fresh busy heartbeats must match an active, unexpired claim. This is liveness, not queue capacity or workload health. SIGTERM drains the current call and keeps renewing until it finishes or exceeds its deadline. [ADR 0003](adr/0003-worker-liveness-and-renewable-leases.md) records failure semantics, clock synchronization assumptions, and limits.
 
 ## Persistence and deployment
 
-PostgreSQL is the intended multi-process deployment backend. SQLite is a local development convenience, not a scale claim. Schema v1 is an explicit CLI migration protected by a PostgreSQL advisory lock. It creates tables only in an empty schema; future versions require explicit migration code, not edits that silently depend on `create_all` changing existing tables.
+PostgreSQL is the intended multi-process deployment backend. SQLite is a local development convenience, not a scale claim. Explicit CLI migrations are protected by a PostgreSQL advisory lock or SQLite `BEGIN IMMEDIATE`. Schema v2 adds worker heartbeats to the original v1 tables in the same transaction as its version marker. Existing resource data is preserved. API readiness and worker startup require the matching schema. Upgrades stop writers; rollback restores a pre-upgrade snapshot (see the runbook). Future changes require explicit forward migrations.
 
 The default Compose stack runs API, worker, PostgreSQL, and a one-shot migration. API binds only to `127.0.0.1:8000`. Simulation requires no runtime socket. The Docker override is an opt-in dedicated-host development configuration. No Kubernetes, multi-region scheduling, live migration, automatic failover, or production availability claim is made.
 
