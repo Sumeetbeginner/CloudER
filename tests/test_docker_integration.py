@@ -60,7 +60,7 @@ def test_live_compute_load_balancer_and_database(platform):
             deadline = time.monotonic() + 40
             while time.monotonic() < deadline:
                 result = subprocess.run(
-                    ["docker", "exec", container, "pg_isready", "-U", "clouder"],
+                    ["docker", "exec", container, "pg_isready", "-h", "127.0.0.1", "-U", "clouder"],
                     capture_output=True,
                 )
                 if result.returncode == 0:
@@ -107,4 +107,5 @@ def test_live_compute_load_balancer_and_database(platform):
         for item in reversed(resources):
             provider.apply(item, "delete")
         provider.call("DELETE", f"/networks/clouder-tenant-{tenant}")
+        provider.call("DELETE", f"/networks/clouder-ingress-{tenant}")
         provider.client.close()

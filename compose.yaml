@@ -42,6 +42,7 @@ services:
     <<: *control
     command: [serve, --host, 0.0.0.0]
     ports: ["127.0.0.1:8000:8000"]
+    networks: [control, ingress]
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
@@ -70,3 +71,4 @@ volumes:
 networks:
   control:
     internal: true
+  ingress:

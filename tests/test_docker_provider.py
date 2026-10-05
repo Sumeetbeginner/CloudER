@@ -33,6 +33,11 @@ def test_catalog_security_and_database_config(platform):
         if kind == "loadbalancer":
             assert config["HostConfig"]["PortBindings"]["8080/tcp"][0]["HostIp"] == "127.0.0.1"
             assert item.spec["targets"][0] in config["Env"][0]
+            assert config["HostConfig"]["NetworkMode"] == f"clouder-ingress-{item.tenant_id}"
+            assert set(config["NetworkingConfig"]["EndpointsConfig"]) == {
+                f"clouder-tenant-{item.tenant_id}",
+                f"clouder-ingress-{item.tenant_id}",
+            }
         else:
             assert "PortBindings" not in config["HostConfig"]
     with pytest.raises(ProviderError, match="credentials"):
@@ -64,14 +69,22 @@ def test_docker_reconcile_is_idempotent_and_label_guarded(platform):
                             }
                         },
                         "State": {"Running": True},
-                        "NetworkSettings": {"Ports": {"8080/tcp": [{"HostPort": "49123"}]}},
+                        "NetworkSettings": {
+                            "Ports": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "49123"}]}
+                        },
                     },
                 )
                 if exists
                 else httpx.Response(404)
             )
         if "/networks/" in request.url.path:
-            return httpx.Response(200, json={"Labels": {"clouder.tenant": item.tenant_id}})
+            return httpx.Response(
+                200,
+                json={
+                    "Labels": {"clouder.tenant": item.tenant_id},
+                    "Internal": "clouder-tenant-" in request.url.path,
+                },
+            )
         if request.method == "DELETE":
             exists = False
         return httpx.Response(204)
@@ -103,3 +116,35 @@ def test_runtime_errors_never_expose_response_body(platform):
     with pytest.raises(ProviderError) as caught:
         provider.call("GET", "/containers/test/json")
     assert "do-not-leak" not in str(caught.value)
+
+
+@pytest.mark.parametrize("bindings", [None, [], [{"HostIp": "0.0.0.0", "HostPort": "49123"}]])
+def test_balancer_requires_a_published_loopback_binding(platform, bindings):
+    provider = DockerProvider(platform[4])
+    item = resource("loadbalancer")
+
+    def handler(request):
+        if "/networks/" in request.url.path:
+            return httpx.Response(
+                200,
+                json={
+                    "Labels": {"clouder.tenant": item.tenant_id},
+                    "Internal": "clouder-tenant-" in request.url.path,
+                },
+            )
+        if request.url.path.endswith("/json"):
+            return httpx.Response(
+                200,
+                json={
+                    "Config": {
+                        "Labels": {"clouder.resource": item.id, "clouder.tenant": item.tenant_id}
+                    },
+                    "State": {"Running": True},
+                    "NetworkSettings": {"Ports": {"8080/tcp": bindings}},
+                },
+            )
+        return httpx.Response(204)
+
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://docker")
+    with pytest.raises(ProviderError, match="published loopback port"):
+        provider.apply(item, "create")

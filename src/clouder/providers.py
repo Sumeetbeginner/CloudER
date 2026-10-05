@@ -47,17 +47,25 @@ class DockerProvider:
     def name(resource: Resource) -> str:
         return f"clouder-{resource.id}"
 
-    def network(self, tenant_id: str) -> str:
-        name = f"clouder-tenant-{tenant_id}"
+    def network(self, tenant_id: str, *, ingress: bool = False) -> str:
+        # Docker cannot publish ports for an internal-only container. Only the
+        # controlled proxy joins a non-internal, tenant-specific ingress network.
+        name = f"clouder-{'ingress' if ingress else 'tenant'}-{tenant_id}"
         current = self.call("GET", f"/networks/{name}")
         if current.status_code == 404:
             self.call(
                 "POST",
                 "/networks/create",
-                json={"Name": name, "Internal": True, "Labels": {"clouder.tenant": tenant_id}},
+                json={
+                    "Name": name,
+                    "Internal": not ingress,
+                    "Labels": {"clouder.tenant": tenant_id},
+                },
             )
         elif current.json().get("Labels", {}).get("clouder.tenant") != tenant_id:
             raise ProviderError("Network ownership label mismatch")
+        elif current.json().get("Internal") != (not ingress):
+            raise ProviderError("Network isolation configuration mismatch")
         return name
 
     def container_config(self, resource: Resource, password: str | None) -> dict[str, Any]:
@@ -101,6 +109,9 @@ class DockerProvider:
             host["Binds"] = [f"clouder-data-{resource.id}:/var/lib/postgresql/data"]
             host["Tmpfs"]["/var/run/postgresql"] = "rw,nosuid,size=16m,uid=70,gid=70"
         elif resource.kind == "loadbalancer":
+            ingress = f"clouder-ingress-{resource.tenant_id}"
+            host["NetworkMode"] = ingress
+            config["NetworkingConfig"]["EndpointsConfig"][ingress] = {}
             config.update(
                 Image=self.settings.loadbalancer_image,
                 User="99:99",
@@ -144,6 +155,12 @@ class DockerProvider:
                 self.call("DELETE", f"/volumes/clouder-data-{resource.id}")
             return {"provider": "docker"}
         self.network(resource.tenant_id)
+        if resource.kind == "loadbalancer":
+            ingress = self.network(resource.tenant_id, ingress=True)
+            if current.status_code != 404 and ingress not in current.json().get(
+                "NetworkSettings", {}
+            ).get("Networks", {}):
+                self.call("POST", f"/networks/{ingress}/connect", json={"Container": name})
         if current.status_code == 404:
             response = self.call(
                 "POST",
@@ -173,6 +190,12 @@ class DockerProvider:
             )
         elif resource.kind == "loadbalancer":
             ports = actual.json().get("NetworkSettings", {}).get("Ports", {}).get("8080/tcp", [])
-            if ports:
-                result["endpoint"] = f"http://127.0.0.1:{ports[0]['HostPort']}"
+            binding = next(
+                (port for port in ports or [] if port.get("HostIp") == "127.0.0.1"), None
+            )
+            if not binding or not str(binding.get("HostPort", "")).isdigit():
+                raise ProviderError(
+                    "Load balancer has no published loopback port; inspect ingress networking"
+                )
+            result["endpoint"] = f"http://127.0.0.1:{binding['HostPort']}"
         return result

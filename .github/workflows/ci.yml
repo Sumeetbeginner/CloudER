@@ -65,6 +65,7 @@ jobs:
       - run: sh scripts/pull-images.sh
       - run: CLOUDER_TEST_DOCKER=1 pytest tests/test_docker_integration.py -v
       - run: docker build -t clouder-ci .
+      - run: python scripts/configure.py && python scripts/compose_smoke.py
 
   browser:
     runs-on: ubuntu-latest

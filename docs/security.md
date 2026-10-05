@@ -25,7 +25,7 @@ Protect tenant metadata, stored objects, secret plaintext, database data, runtim
 
 - This is not ready for public internet exposure or untrusted customer tenants.
 - HTTP defaults to loopback. Configure TLS, trusted-proxy behavior, authentication policy, and rate limits before adding remote ingress.
-- All workloads within a tenant share one network. There are no per-resource security groups or egress policies.
+- All workloads within a tenant share one internal network. Only the controlled HAProxy template also joins a tenant-specific non-internal ingress network; it consequently has an outbound route. The API similarly joins a dedicated Compose ingress network. There are no per-resource security groups or additional egress policies.
 - PostgreSQL passwords are encrypted in control-plane storage but appear in trusted Docker container configuration. Docker administrators can access them.
 - The API's readiness check covers metadata/schema connectivity, not worker health, storage health, or workload uptime.
 - Logical storage quota excludes retained blobs. Deleting objects does not immediately reclaim disk.
