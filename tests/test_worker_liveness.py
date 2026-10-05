@@ -235,3 +235,49 @@ def test_worker_health_cli_exit_codes_and_sanitized_errors(platform, monkeypatch
     output = capsys.readouterr().out
     assert json.loads(output)["reason"] == "metadata_or_schema_unavailable"
     assert "secret-database-url" not in output
+
+
+@pytest.mark.parametrize("action", ["renew", "finish"])
+def test_expiry_is_checked_after_database_lock_wait(platform, monkeypatch, action):
+    from sqlalchemy import event, update
+
+    client, db, worker, keys, settings = platform
+    created = provision(client, keys["alpha_owner"]).json()
+    operation_id, token = worker.claim()
+    current = now()
+    clock = [current]
+    monkeypatch.setattr("clouder.worker.now", lambda: clock[0])
+    waiting = threading.Event()
+
+    def before_statement(connection, cursor, statement, parameters, context, executemany):
+        if "FOR UPDATE" in statement or statement == "BEGIN IMMEDIATE":
+            waiting.set()
+
+    def invoke():
+        if action == "renew":
+            return worker.renew(operation_id, token)
+        return worker.finish(operation_id, token, {"expired": True}, None)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with db.transaction() as session:
+            session.execute(
+                update(Operation)
+                .where(Operation.id == operation_id)
+                .values(lease_until=current + settings.operation_lease_seconds)
+            )
+            event.listen(db.engine, "before_cursor_execute", before_statement)
+            future = pool.submit(invoke)
+            assert waiting.wait(5)
+            # The UPDATE/row lock held above delays the worker past expiry.
+            clock[0] += settings.operation_lease_seconds + 1
+        try:
+            result = future.result(timeout=5)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", before_statement)
+    assert result is (False if action == "renew" else None)
+    with db.transaction() as session:
+        assert (
+            session.get(Operation, operation_id).lease_until
+            == current + settings.operation_lease_seconds
+        )
+        assert session.get(Resource, created["resource_id"]).state == "pending"

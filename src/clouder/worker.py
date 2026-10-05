@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from typing import Any
 
 from cryptography.fernet import Fernet
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, or_, select, text, update
+from sqlalchemy.orm import Session
 
 from clouder.config import Settings
 from clouder.db import Database
@@ -64,8 +65,9 @@ class Worker:
             record_heartbeat(session, self.id, self.settings.provider, state)
 
     def renew(self, operation_id: str, token: str) -> bool:
-        current = now()
         with self.db.transaction() as session:
+            self.lock_claim(session, operation_id)
+            current = now()
             renewed = session.execute(
                 update(Operation)
                 .where(
@@ -80,6 +82,16 @@ class Worker:
                 return False
             record_heartbeat(session, self.id, self.settings.provider, "busy", operation_id, token)
         return True
+
+    def lock_claim(self, session: Session, operation_id: str) -> None:
+        # Sample expiry AFTER obtaining the write lock: a blocked statement must
+        # not renew/complete using a timestamp captured before its lock wait.
+        if self.db.engine.dialect.name == "sqlite":
+            session.execute(text("BEGIN IMMEDIATE"))
+        else:
+            session.execute(
+                select(Operation.id).where(Operation.id == operation_id).with_for_update()
+            )
 
     @contextmanager
     def maintain_lease(self, operation_id: str, token: str) -> Iterator[threading.Event]:
@@ -165,6 +177,7 @@ class Worker:
     ) -> None:
         with self.db.transaction() as session:
             # Fence old workers before writing either resource or job state.
+            self.lock_claim(session, operation_id)
             fenced = session.execute(
                 update(Operation)
                 .where(

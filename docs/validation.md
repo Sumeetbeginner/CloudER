@@ -7,7 +7,7 @@ Updated: 2026-10-05. This file records actual checks, not aspirational productio
 | Ruff lint and format | Pass | Python source, scripts, and tests |
 | Strict mypy | Pass | 15 Python source modules |
 | JavaScript parse | Pass | Console JavaScript |
-| Python behavioral suite | 39 passed, 1 skipped | SQLite; 94.05% measured statement coverage after worker-liveness changes |
+| Python behavioral suite | 41 passed, 1 skipped | SQLite; 94.74% measured statement coverage after worker-liveness changes |
 | Docker adapter contracts | Pass | Mocked Docker HTTP responses and security configuration assertions; not live Docker |
 | Desktop browser | Pass | Chromium, 1440 px; console → HTTP API → SQL/jobs → worker → rendered readiness |
 | Mobile browser | Pass | Chromium, 390 px; responsive layout, navigation, no page-level horizontal overflow |
@@ -41,6 +41,6 @@ After the correction, GitHub run [37285038195](https://github.com/Sumeetbeginner
 
 ## Worker reliability increment
 
-Local `make check` and `make test` pass: 39 tests passed, one live-Docker test skipped, 94.05% statement coverage. New cases cover background renewal beyond the original lease deadline, token/expiry fencing, lost database ownership, deadline overrun, graceful drain, provider-scoped health and CLI exit codes, real subprocess death after a deterministic provider effect, and v1→v2 schema migration with injected DDL failure rollback. The subprocess uses a test provider, not Docker.
+Local `make check` and `make test` pass: 41 tests passed, one live-Docker test skipped, 94.74% statement coverage. New cases cover background renewal beyond the original lease deadline, token/expiry fencing after database lock waits, lost database ownership, deadline overrun, graceful drain, provider-scoped health and CLI exit codes, real subprocess death after a deterministic provider effect, and v1→v2 schema migration with injected DDL failure rollback. The subprocess uses a test provider, not Docker.
 
 The earlier integration run above belongs to the foundation checkpoint. The worker-reliability changes require a new PostgreSQL, browser, and Docker/Compose CI run; results will be recorded after that run completes.

@@ -8,7 +8,7 @@ A fixed lease can expire during a slow provider call. Another worker may then cl
 
 ## Decision
 
-Renew each active claim on a dedicated thread, outside provider execution. Renewal and completion both condition their writes on a running operation, the matching token, and an unexpired lease. Renewal and the busy heartbeat commit together. An initial renewal failure prevents the provider call. A later failure marks ownership uncertain and discards its eventual result. Shutdown stops the polling loop after its current call and keeps renewal active while draining.
+Renew each active claim on a dedicated thread, outside provider execution. Renewal and completion both condition their writes on a running operation, the matching token, and an unexpired lease. The expiry timestamp is sampled after acquiring the operation write lock, so a long database lock wait cannot revive an expired claim. Renewal and the busy heartbeat commit together. An initial renewal failure prevents the provider call. A later failure marks ownership uncertain and discards its eventual result. Shutdown stops the polling loop after its current call and keeps renewal active while draining.
 
 Renewal is bounded by a monotonic execution deadline (600 seconds by default). A timed-out call cannot publish its result or keep renewing indefinitely. Its last lease must expire before recovery. This deadline does **not** interrupt Python, forcibly stop the provider, or cancel an in-flight Docker request. A stuck process needs operator termination; Compose supplies a configurable shutdown grace period before its normal forced termination. The process may remain blocked even after renewal stops.
 
