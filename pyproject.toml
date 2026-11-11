@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clouder"
+version = "0.1.0"
+description = "A self-hosted cloud control plane with durable reconciliation"
+requires-python = ">=3.12"
+dependencies = ["fastapi", "uvicorn", "sqlalchemy", "psycopg[binary]", "cryptography", "httpx", "pydantic-settings"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff", "mypy"]
+
+[project.scripts]
+clouder = "clouder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+clouder = ["static/*", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["docker: requires an isolated Docker daemon", "postgres: requires PostgreSQL"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/clouder"]
+
+[tool.coverage.run]
+source = ["clouder"]
+omit = ["*/cli.py"]
+
+[tool.coverage.report]
+show_missing = true
